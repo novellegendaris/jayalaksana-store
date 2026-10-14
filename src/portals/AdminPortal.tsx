@@ -122,9 +122,9 @@ function AdminLogin({ email, pass, setEmail, setPass, error, setError }: {
           </form>
         </div>
         <p className="mt-4 text-center text-xs text-gray-400">
-          <a href="#/" className="hover:text-emerald-400">Portal Toko</a>
+          <a href="/" className="hover:text-emerald-400">Portal Toko</a>
           {' · '}
-          <a href="#/staf" className="hover:text-emerald-400">Portal Staff</a>
+          <a href="/staf" className="hover:text-emerald-400">Portal Staff</a>
         </p>
       </div>
     </div>

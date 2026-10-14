@@ -108,9 +108,9 @@ function StaffLogin() {
         </div>
 
         <p className="mt-4 text-center text-xs text-gray-400">
-          Login Toko? <a href="#/" className="text-emerald-600 hover:underline">Portal Toko</a>
+          Login Toko? <a href="/" className="text-emerald-600 hover:underline">Portal Toko</a>
           {' · '}
-          <a href="#/admin" className="text-emerald-600 hover:underline">Admin CMS</a>
+          <a href="/admin" className="text-emerald-600 hover:underline">Admin CMS</a>
         </p>
       </div>
     </div>

@@ -6,26 +6,32 @@ import { AdminPortal } from './portals/AdminPortal';
 
 type Route = 'store' | 'staf' | 'admin';
 
-function getRouteFromHash(): Route {
+function getRouteFromPath(): Route {
+  const path = window.location.pathname.toLowerCase();
   const hash = window.location.hash.toLowerCase();
-  if (hash.includes('admin')) return 'admin';
-  if (hash.includes('staf')) return 'staf';
+  const combined = path + ' ' + hash;
+  if (combined.includes('admin')) return 'admin';
+  if (combined.includes('staf')) return 'staf';
   return 'store';
 }
 
 function Router() {
   const { user, authLoading } = useApp();
-  const [route, setRoute] = useState<Route>(getRouteFromHash());
+  const [route, setRoute] = useState<Route>(getRouteFromPath());
 
   useEffect(() => {
-    const onHash = () => setRoute(getRouteFromHash());
-    window.addEventListener('hashchange', onHash);
-    return () => window.removeEventListener('hashchange', onHash);
+    const onPop = () => setRoute(getRouteFromPath());
+    window.addEventListener('popstate', onPop);
+    window.addEventListener('hashchange', onPop);
+    return () => {
+      window.removeEventListener('popstate', onPop);
+      window.removeEventListener('hashchange', onPop);
+    };
   }, []);
 
   const navigate = (r: Route) => {
-    const hash = r === 'admin' ? '#/admin' : r === 'staf' ? '#/staf' : '#/';
-    window.location.hash = hash;
+    const path = r === 'admin' ? '/admin' : r === 'staf' ? '/staf' : '/';
+    window.history.pushState({}, '', path);
     setRoute(r);
   };
 
