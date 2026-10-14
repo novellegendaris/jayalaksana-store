@@ -155,9 +155,9 @@ function StoreLogin() {
         </div>
 
         <p className="mt-4 text-center text-xs text-gray-400">
-          Bukan toko? <a href="/staf" className="text-emerald-600 hover:underline">Login Staff</a>
+          Bukan toko? <a href="#/staf" className="text-emerald-600 hover:underline">Login Staff</a>
           {' · '}
-          <a href="/admin" className="text-emerald-600 hover:underline">Admin CMS</a>
+          <a href="#/admin" className="text-emerald-600 hover:underline">Admin CMS</a>
         </p>
       </div>
     </div>

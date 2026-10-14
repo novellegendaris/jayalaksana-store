@@ -6,26 +6,26 @@ import { AdminPortal } from './portals/AdminPortal';
 
 type Route = 'store' | 'staf' | 'admin';
 
-function getRouteFromPath(): Route {
-  const path = window.location.pathname.toLowerCase();
-  if (path.startsWith('/admin')) return 'admin';
-  if (path.startsWith('/staf')) return 'staf';
+function getRouteFromHash(): Route {
+  const hash = window.location.hash.toLowerCase();
+  if (hash.includes('admin')) return 'admin';
+  if (hash.includes('staf')) return 'staf';
   return 'store';
 }
 
 function Router() {
-  const { user, authLoading, logout } = useApp();
-  const [route, setRoute] = useState<Route>(getRouteFromPath());
+  const { user, authLoading } = useApp();
+  const [route, setRoute] = useState<Route>(getRouteFromHash());
 
   useEffect(() => {
-    const onPop = () => setRoute(getRouteFromPath());
-    window.addEventListener('popstate', onPop);
-    return () => window.removeEventListener('popstate', onPop);
+    const onHash = () => setRoute(getRouteFromHash());
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
   }, []);
 
   const navigate = (r: Route) => {
-    const path = r === 'admin' ? '/admin' : r === 'staf' ? '/staf' : '/';
-    window.history.pushState({}, '', path);
+    const hash = r === 'admin' ? '#/admin' : r === 'staf' ? '#/staf' : '#/';
+    window.location.hash = hash;
     setRoute(r);
   };
 
