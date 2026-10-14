@@ -3,16 +3,16 @@ import {
   Truck, Eye, EyeOff, Lock, Mail, AlertCircle, CheckCircle2,
   Package, MapPin, User, Phone, Send, Clock, Hash, Navigation,
   ClipboardList, TrendingUp, Store as StoreIcon, Search, ChevronRight,
-  ShoppingCart, Plus, Minus, Trash2, ShoppingBag, X,
+  ShoppingCart, Plus, Minus, Trash2, ShoppingBag, X, Settings, Save, KeyRound,
 } from 'lucide-react';
 import { useApp } from '../context';
 import { AppHeader } from '../components/AppHeader';
 import { GoogleMapPicker } from '../components/GoogleMapPicker';
 import { StatusBadge, statusConfig } from '../components/StatusBadge';
 import { formatRupiah, formatDate, cn } from '../utils';
-import type { Staff, Order, OrderStatus, Coordinates } from '../types';
+import type { Staff, Order, OrderStatus, Coordinates, StaffRole } from '../types';
 
-type StaffView = 'orders' | 'catalog' | 'deliveries' | 'stores';
+type StaffView = 'orders' | 'catalog' | 'deliveries' | 'stores' | 'profile';
 
 export function StaffPortal() {
   const { user, authLoading } = useApp();
@@ -155,6 +155,7 @@ function SalesDashboard({ staff, view, setView }: { staff: Staff; view: StaffVie
   const navItems = [
     { label: 'Riwayat Pesanan', active: view === 'orders', onClick: () => setView('orders') },
     { label: 'Katalog & Order', active: view === 'catalog', onClick: () => setView('catalog') },
+    { label: 'Profil', active: view === 'profile', onClick: () => setView('profile') },
   ];
 
   return (
@@ -308,6 +309,8 @@ function SalesDashboard({ staff, view, setView }: { staff: Staff; view: StaffVie
           <div className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-emerald-400" />{toast}</div>
         </div>
       )}
+
+      {view === 'profile' && <StaffProfile staff={staff} />}
     </div>
   );
 }
@@ -335,6 +338,7 @@ function FieldAdminDashboard({ staff, view, setView }: { staff: Staff; view: Sta
   const navItems = [
     { label: 'Kelola Pesanan', active: view === 'orders', onClick: () => setView('orders') },
     { label: 'Direktori Toko', active: view === 'stores', onClick: () => setView('stores') },
+    { label: 'Profil', active: view === 'profile', onClick: () => setView('profile') },
   ];
 
   return (
@@ -479,6 +483,8 @@ function FieldAdminDashboard({ staff, view, setView }: { staff: Staff; view: Sta
           </div>
         </div>
       )}
+
+      {view === 'profile' && <StaffProfile staff={staff} />}
     </div>
   );
 }
@@ -495,6 +501,7 @@ function DriverDashboard({ staff, view, setView }: { staff: Staff; view: StaffVi
   const navItems = [
     { label: 'Pengiriman Aktif', active: view === 'deliveries', onClick: () => setView('deliveries') },
     { label: 'Riwayat', active: view === 'orders', onClick: () => setView('orders') },
+    { label: 'Profil', active: view === 'profile', onClick: () => setView('profile') },
   ];
 
   return (
@@ -616,6 +623,8 @@ function DriverDashboard({ staff, view, setView }: { staff: Staff; view: StaffVi
           )}
         </div>
       )}
+
+      {view === 'profile' && <StaffProfile staff={staff} />}
     </div>
   );
 }
@@ -635,6 +644,164 @@ function StatBox({ label, value, bg, color }: { label: string; value: number; bg
       <div className={cn('mb-1 flex h-7 w-7 items-center justify-center rounded-md', bg)}><Package className={cn('h-3.5 w-3.5', color)} /></div>
       <p className="text-base font-bold text-gray-900">{value}</p>
       <p className="text-[10px] text-gray-500">{label}</p>
+    </div>
+  );
+}
+
+// ===== STAFF PROFILE (Self-Service Settings) =====
+function StaffProfile({ staff }: { staff: Staff }) {
+  const { updateStaffProfile } = useApp();
+  const [name, setName] = useState(staff.name);
+  const [phone, setPhone] = useState(staff.phone ?? '');
+  const [currentPass, setCurrentPass] = useState('');
+  const [newPass, setNewPass] = useState('');
+  const [confirmPass, setConfirmPass] = useState('');
+  const [showPass, setShowPass] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  const roleLabels: Record<StaffRole, string> = { sales: 'Sales', field_admin: 'Admin Lapangan', driver: 'Driver' };
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSuccess(null);
+
+    const updates: Partial<Staff> = {};
+
+    if (name !== staff.name) updates.name = name;
+    if ((phone || null) !== staff.phone) updates.phone = phone || null;
+
+    if (newPass.trim()) {
+      if (newPass.length < 6) {
+        setError('Kata sandi baru minimal 6 karakter');
+        return;
+      }
+      if (newPass !== confirmPass) {
+        setError('Konfirmasi kata sandi tidak cocok');
+        return;
+      }
+      if (currentPass !== staff.password) {
+        setError('Kata sandi saat ini salah');
+        return;
+      }
+      updates.password = newPass.trim();
+    }
+
+    if (Object.keys(updates).length === 0) {
+      setError('Tidak ada perubahan untuk disimpan');
+      return;
+    }
+
+    setSaving(true);
+    const result = await updateStaffProfile(staff.id, updates);
+    setSaving(false);
+
+    if (result.success) {
+      setSuccess('Profil berhasil diperbarui');
+      setCurrentPass(''); setNewPass(''); setConfirmPass('');
+      setTimeout(() => setSuccess(null), 3000);
+    } else {
+      setError(result.error ?? 'Gagal memperbarui profil');
+    }
+  };
+
+  return (
+    <div className="mx-auto max-w-2xl px-4 py-5">
+      <h1 className="mb-4 text-lg font-bold text-gray-900">Profil & Pengaturan</h1>
+
+      {/* Account info card */}
+      <div className="mb-4 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-blue-600 text-white">
+            <User className="h-7 w-7" />
+          </div>
+          <div>
+            <p className="text-base font-bold text-gray-900">{staff.name}</p>
+            <p className="text-sm text-gray-500">{staff.email}</p>
+            <span className="mt-1 inline-block rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700">{roleLabels[staff.role]}</span>
+          </div>
+        </div>
+      </div>
+
+      <form onSubmit={handleSave} className="space-y-4 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+        {error && (
+          <div className="flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2.5 text-sm text-red-700">
+            <AlertCircle className="h-4 w-4 flex-shrink-0" /> {error}
+          </div>
+        )}
+        {success && (
+          <div className="flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2.5 text-sm text-emerald-700">
+            <CheckCircle2 className="h-4 w-4 flex-shrink-0" /> {success}
+          </div>
+        )}
+
+        <div>
+          <label className="mb-1 block text-xs font-semibold text-gray-500">Nama Lengkap</label>
+          <div className="relative">
+            <User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="w-full rounded-lg border border-gray-200 py-2.5 pl-10 pr-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-50" required />
+          </div>
+        </div>
+
+        <div>
+          <label className="mb-1 block text-xs font-semibold text-gray-500">Email (tidak dapat diubah)</label>
+          <div className="relative">
+            <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <input type="email" value={staff.email} disabled className="w-full cursor-not-allowed rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-3 text-sm text-gray-400" />
+          </div>
+        </div>
+
+        <div>
+          <label className="mb-1 block text-xs font-semibold text-gray-500">Nomor HP</label>
+          <div className="relative">
+            <Phone className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="081234567890" className="w-full rounded-lg border border-gray-200 py-2.5 pl-10 pr-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-50" />
+          </div>
+        </div>
+
+        {/* Password change section */}
+        <div className="border-t border-gray-100 pt-4">
+          <div className="mb-3 flex items-center gap-2">
+            <KeyRound className="h-4 w-4 text-gray-400" />
+            <h3 className="text-sm font-bold text-gray-900">Ubah Kata Sandi</h3>
+          </div>
+          <div className="space-y-3">
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-gray-500">Kata Sandi Saat Ini</label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <input type={showPass ? 'text' : 'password'} value={currentPass} onChange={(e) => setCurrentPass(e.target.value)} placeholder="Masukkan kata sandi saat ini" className="w-full rounded-lg border border-gray-200 py-2.5 pl-10 pr-10 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-50" />
+                <button type="button" onClick={() => setShowPass((v) => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+                  {showPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-gray-500">Kata Sandi Baru</label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                  <input type={showPass ? 'text' : 'password'} value={newPass} onChange={(e) => setNewPass(e.target.value)} placeholder="Minimal 6 karakter" className="w-full rounded-lg border border-gray-200 py-2.5 pl-10 pr-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-50" />
+                </div>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-gray-500">Konfirmasi Sandi Baru</label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                  <input type={showPass ? 'text' : 'password'} value={confirmPass} onChange={(e) => setConfirmPass(e.target.value)} placeholder="Ulangi sandi baru" className="w-full rounded-lg border border-gray-200 py-2.5 pl-10 pr-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-50" />
+                </div>
+              </div>
+            </div>
+            <p className="text-xs text-gray-400">Kosongkan kolom kata sandi jika tidak ingin mengubahnya.</p>
+          </div>
+        </div>
+
+        <button type="submit" disabled={saving} className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:bg-gray-300">
+          <Save className="h-4 w-4" /> {saving ? 'Menyimpan...' : 'Simpan Perubahan'}
+        </button>
+      </form>
     </div>
   );
 }

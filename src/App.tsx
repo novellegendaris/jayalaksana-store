@@ -37,8 +37,8 @@ function Router() {
 
   // If user logs out while on a protected route, stay on the route's login screen
   useEffect(() => {
-    if (!authLoading && !user && route === 'admin') {
-      localStorage.removeItem('armadaexpress_admin');
+    if (!authLoading && !user && (route === 'admin' || route === 'staf')) {
+      // no-op: the portal itself shows the login screen when user is null
     }
   }, [user, authLoading, route]);
 

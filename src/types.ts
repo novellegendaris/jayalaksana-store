@@ -81,7 +81,7 @@ export interface CartItem {
 }
 
 export interface AuthUser {
-  kind: 'store' | 'staff';
+  kind: 'store' | 'staff' | 'admin';
   store?: Store;
   staff?: Staff;
 }

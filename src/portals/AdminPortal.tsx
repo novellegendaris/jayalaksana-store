@@ -3,7 +3,7 @@ import {
   Shield, Store as StoreIcon, User as UserIcon, Package, Plus, X,
   Search, ChevronRight, MapPin, Phone, Calendar, Navigation,
   AlertCircle, CheckCircle2, Trash2, Mail, Lock, ClipboardList,
-  TrendingUp, Users, ShoppingBag,
+  TrendingUp, Users, ShoppingBag, LogOut, Edit3, Save, KeyRound,
 } from 'lucide-react';
 import { useApp } from '../context';
 import { AppHeader } from '../components/AppHeader';
@@ -15,7 +15,7 @@ import type { Store, Staff, Product, StaffRole } from '../types';
 type AdminTab = 'overview' | 'stores' | 'staff' | 'products' | 'orders';
 
 export function AdminPortal() {
-  const { user, authLoading } = useApp();
+  const { user, authLoading, loginAdmin } = useApp();
   const [tab, setTab] = useState<AdminTab>('overview');
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPass, setLoginPass] = useState('');
@@ -29,23 +29,14 @@ export function AdminPortal() {
     );
   }
 
-  // Admin login gate — hardcoded CMS admin credentials for demo
-  if (!user || user.kind !== 'store') {
-    // For admin, we use a simple hardcoded gate since admin is a "super admin" role
-    // In a real app this would be a separate auth table or Supabase Auth
-  }
-
-  // Admin is identified by a special session flag
-  const isAdmin = localStorage.getItem('armadaexpress_admin') === 'true';
-
-  if (!isAdmin) {
-    return <AdminLogin email={loginEmail} pass={loginPass} setEmail={setLoginEmail} setPass={setLoginPass} error={loginError} setError={setLoginError} />;
+  if (!user || user.kind !== 'admin') {
+    return <AdminLogin email={loginEmail} pass={loginPass} setEmail={setLoginEmail} setPass={setLoginPass} error={loginError} setError={setLoginError} onLogin={loginAdmin} />;
   }
 
   const navItems = [
     { label: 'Overview', active: tab === 'overview', onClick: () => setTab('overview') },
     { label: 'Toko', active: tab === 'stores', onClick: () => setTab('stores') },
-    { label: 'Staff', active: tab === 'staff', onClick: () => setTab('staff') },
+    { label: 'Manajemen Staf', active: tab === 'staff', onClick: () => setTab('staff') },
     { label: 'Produk', active: tab === 'products', onClick: () => setTab('products') },
     { label: 'Pesanan', active: tab === 'orders', onClick: () => setTab('orders') },
   ];
@@ -63,17 +54,16 @@ export function AdminPortal() {
 }
 
 // ===== ADMIN LOGIN =====
-function AdminLogin({ email, pass, setEmail, setPass, error, setError }: {
+function AdminLogin({ email, pass, setEmail, setPass, error, setError, onLogin }: {
   email: string; pass: string; setEmail: (v: string) => void; setPass: (v: string) => void;
   error: string | null; setError: (v: string | null) => void;
+  onLogin: (email: string, password: string) => { success: boolean; error?: string };
 }) {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (email === 'admin@armadaexpress.com' && pass === 'admin123') {
-      localStorage.setItem('armadaexpress_admin', 'true');
-      window.location.reload();
-    } else {
-      setError('Email atau kata sandi salah');
+    const result = onLogin(email.trim(), pass);
+    if (!result.success) {
+      setError(result.error ?? 'Email atau kata sandi salah');
     }
   };
 
@@ -352,10 +342,11 @@ function StoresTab() {
   );
 }
 
-// ===== STAFF TAB =====
+// ===== STAFF TAB (Manajemen Staf) =====
 function StaffTab() {
-  const { staff, addStaff, deleteStaff } = useApp();
+  const { staff, addStaff, deleteStaff, updateStaffByAdmin } = useApp();
   const [showAdd, setShowAdd] = useState(false);
+  const [editingStaff, setEditingStaff] = useState<Staff | null>(null);
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newPass, setNewPass] = useState('');
@@ -378,11 +369,11 @@ function StaffTab() {
     <div className="mx-auto max-w-7xl px-4 py-5">
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-bold text-gray-900">Manajemen Staff</h1>
-          <p className="text-sm text-gray-500">{staff.length} staff terdaftar</p>
+          <h1 className="text-lg font-bold text-gray-900">Manajemen Staf</h1>
+          <p className="text-sm text-gray-500">{staff.length} staf terdaftar</p>
         </div>
         <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700">
-          <Plus className="h-4 w-4" /> Tambah Staff
+          <Plus className="h-4 w-4" /> Tambah Staf
         </button>
       </div>
 
@@ -410,29 +401,163 @@ function StaffTab() {
         </div>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {staff.map((s) => (
-          <div key={s.id} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-            <div className="mb-2 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gray-100"><UserIcon className="h-4 w-4 text-gray-500" /></div>
-                <div><p className="text-sm font-bold">{s.name}</p><p className="text-xs text-gray-400">{s.email}</p></div>
-              </div>
-              <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-medium', roleColors[s.role])}>{roleLabels[s.role]}</span>
-            </div>
-            {s.phone && <p className="text-xs text-gray-500"><Phone className="mr-1 inline h-3 w-3" />{s.phone}</p>}
-            <div className="mt-2 flex items-center justify-between">
-              <span className={cn('flex items-center gap-1 text-xs', s.is_active ? 'text-emerald-600' : 'text-gray-400')}>
-                <span className={cn('h-1.5 w-1.5 rounded-full', s.is_active ? 'bg-emerald-500' : 'bg-gray-300')} />
-                {s.is_active ? 'Aktif' : 'Nonaktif'}
-              </span>
-              <button onClick={() => { if (confirm('Hapus staff ini?')) deleteStaff(s.id); }} className="text-gray-400 hover:text-red-500">
-                <Trash2 className="h-4 w-4" />
-              </button>
+      {editingStaff && (
+        <EditStaffModal
+          staff={editingStaff}
+          onClose={() => setEditingStaff(null)}
+          onSave={async (updates) => {
+            const result = await updateStaffByAdmin(editingStaff.id, updates);
+            if (result.success) {
+              setEditingStaff(null);
+            } else {
+              alert(result.error ?? 'Gagal memperbarui staf');
+            }
+          }}
+        />
+      )}
+
+      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+        <table className="w-full text-sm">
+          <thead className="border-b border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-500">
+            <tr>
+              <th className="px-4 py-3">Nama</th>
+              <th className="px-4 py-3">Email</th>
+              <th className="px-4 py-3">Role</th>
+              <th className="px-4 py-3">Telepon</th>
+              <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3 text-right">Aksi</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {staff.map((s) => (
+              <tr key={s.id} className="hover:bg-gray-50">
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-100"><UserIcon className="h-4 w-4 text-gray-500" /></div>
+                    <span className="font-medium">{s.name}</span>
+                  </div>
+                </td>
+                <td className="px-4 py-3 text-gray-500">{s.email}</td>
+                <td className="px-4 py-3"><span className={cn('rounded-full px-2 py-0.5 text-[10px] font-medium', roleColors[s.role])}>{roleLabels[s.role]}</span></td>
+                <td className="px-4 py-3 text-gray-500">{s.phone ?? '—'}</td>
+                <td className="px-4 py-3">
+                  <span className={cn('flex items-center gap-1 text-xs', s.is_active ? 'text-emerald-600' : 'text-gray-400')}>
+                    <span className={cn('h-1.5 w-1.5 rounded-full', s.is_active ? 'bg-emerald-500' : 'bg-gray-300')} />
+                    {s.is_active ? 'Aktif' : 'Nonaktif'}
+                  </span>
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center justify-end gap-2">
+                    <button onClick={() => setEditingStaff(s)} className="flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
+                      <Edit3 className="h-3.5 w-3.5" /> Edit
+                    </button>
+                    <button onClick={() => { if (confirm('Hapus staf ini?')) deleteStaff(s.id); }} className="text-gray-400 hover:text-red-500">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ===== EDIT STAFF MODAL =====
+function EditStaffModal({ staff, onClose, onSave }: {
+  staff: Staff;
+  onClose: () => void;
+  onSave: (updates: Partial<Pick<Staff, 'name' | 'role' | 'phone' | 'password' | 'is_active' | 'email'>>) => Promise<void>;
+}) {
+  const [name, setName] = useState(staff.name);
+  const [email, setEmail] = useState(staff.email);
+  const [role, setRole] = useState<StaffRole>(staff.role);
+  const [phone, setPhone] = useState(staff.phone ?? '');
+  const [isActive, setIsActive] = useState(staff.is_active);
+  const [newPassword, setNewPassword] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    const updates: Partial<Pick<Staff, 'name' | 'role' | 'phone' | 'password' | 'is_active' | 'email'>> = {
+      name, email, role, phone: phone || null, is_active: isActive,
+    };
+    if (newPassword.trim()) {
+      updates.password = newPassword.trim();
+    }
+    await onSave(updates);
+    setSaving(false);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-gray-900/50" onClick={onClose} />
+      <form onSubmit={handleSave} className="relative z-10 w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Edit3 className="h-5 w-5 text-emerald-600" />
+            <h3 className="text-base font-bold">Edit Staf: {staff.name}</h3>
+          </div>
+          <button type="button" onClick={onClose}><X className="h-5 w-5 text-gray-400" /></button>
+        </div>
+
+        {error && (
+          <div className="mb-3 flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2.5 text-sm text-red-700">
+            <AlertCircle className="h-4 w-4" /> {error}
+          </div>
+        )}
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-gray-500">Nama Lengkap</label>
+            <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm focus:border-emerald-500 focus:outline-none" required />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-gray-500">Email</label>
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm focus:border-emerald-500 focus:outline-none" required />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-gray-500">Role</label>
+            <select value={role} onChange={(e) => setRole(e.target.value as StaffRole)} className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm focus:border-emerald-500 focus:outline-none">
+              <option value="sales">Sales</option>
+              <option value="field_admin">Admin Lapangan</option>
+              <option value="driver">Driver</option>
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-gray-500">Nomor HP</label>
+            <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm focus:border-emerald-500 focus:outline-none" />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-gray-500">Reset Password</label>
+            <div className="relative">
+              <KeyRound className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Kosongkan jika tidak diubah" className="w-full rounded-lg border border-gray-200 py-2.5 pl-10 pr-3 text-sm focus:border-emerald-500 focus:outline-none" />
             </div>
           </div>
-        ))}
-      </div>
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-gray-500">Status Akun</label>
+            <button type="button" onClick={() => setIsActive(!isActive)} className={cn('flex w-full items-center justify-between rounded-lg border px-3 py-2.5 text-sm', isActive ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-gray-200 bg-gray-50 text-gray-500')}>
+              {isActive ? 'Aktif' : 'Nonaktif'}
+              <span className={cn('flex h-5 w-9 items-center rounded-full p-0.5 transition', isActive ? 'bg-emerald-500' : 'bg-gray-300')}>
+                <span className={cn('h-4 w-4 rounded-full bg-white transition', isActive ? 'translate-x-4' : '')} />
+              </span>
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-4 flex gap-2">
+          <button type="button" onClick={onClose} className="flex-1 rounded-lg border border-gray-200 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50">Batal</button>
+          <button type="submit" disabled={saving} className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:bg-gray-300">
+            <Save className="h-4 w-4" /> {saving ? 'Menyimpan...' : 'Simpan'}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }

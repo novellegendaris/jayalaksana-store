@@ -14,9 +14,10 @@ export function AppHeader({ title, onCartClick, onNavigateProfile, navItems }: P
   const { user, logout, cartCount } = useApp();
   const [menuOpen, setMenuOpen] = useState(false);
 
-  const displayName = user?.kind === 'store' ? user.store?.store_name : user?.staff?.name ?? '';
+  const displayName = user?.kind === 'store' ? user.store?.store_name : user?.kind === 'admin' ? 'Super Admin' : user?.staff?.name ?? '';
   const roleLabel = user?.kind === 'store'
     ? (user.store?.is_activated ? 'Toko Terdaftar' : 'Toko Belum Aktif')
+    : user?.kind === 'admin' ? 'Admin CMS'
     : user?.staff?.role === 'sales' ? 'Internal Sales'
     : user?.staff?.role === 'field_admin' ? 'Admin Lapangan'
     : user?.staff?.role === 'driver' ? 'Driver Armada'

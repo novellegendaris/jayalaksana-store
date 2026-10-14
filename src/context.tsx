@@ -11,10 +11,17 @@ interface AppState {
   loginStore: (emailOrId: string, password: string) => Promise<{ success: boolean; needsActivation?: boolean; store?: Store; error?: string }>;
   activateStore: (storeId: string, password: string, whatsapp: string) => Promise<{ success: boolean; error?: string }>;
   loginStaff: (email: string, password: string) => Promise<{ success: boolean; staff?: Staff; error?: string }>;
+  loginAdmin: (email: string, password: string) => { success: boolean; error?: string };
   logout: () => void;
 
   // Store profile
   updateStoreProfile: (storeId: string, updates: Partial<Store>) => Promise<{ success: boolean; error?: string }>;
+
+  // Staff profile (self-service)
+  updateStaffProfile: (staffId: string, updates: Partial<Staff>) => Promise<{ success: boolean; error?: string }>;
+
+  // Admin edits staff
+  updateStaffByAdmin: (staffId: string, updates: Partial<Pick<Staff, 'name' | 'role' | 'phone' | 'password' | 'is_active' | 'email'>>) => Promise<{ success: boolean; error?: string }>;
 
   // Data
   products: Product[];
@@ -159,6 +166,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return { success: true, staff: s };
   };
 
+  const loginAdmin = (email: string, password: string) => {
+    if (email === 'admin@armadaexpress.com' && password === 'admin123') {
+      persistSession({ kind: 'admin' });
+      return { success: true };
+    }
+    return { success: false, error: 'Email atau kata sandi salah' };
+  };
+
   const logout = () => {
     persistSession(null);
     setCart([]);
@@ -174,6 +189,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const updatedStore = data as Store;
       persistSession({ kind: 'store', store: updatedStore });
     }
+    await refreshData();
+    return { success: true };
+  };
+
+  // ===== STAFF PROFILE (self-service) =====
+  const updateStaffProfile = async (staffId: string, updates: Partial<Staff>) => {
+    const { error } = await supabase.from('staff').update(updates).eq('id', staffId);
+    if (error) return { success: false, error: error.message };
+
+    const { data } = await supabase.from('staff').select('*').eq('id', staffId).maybeSingle();
+    if (data) {
+      const updatedStaff = data as Staff;
+      persistSession({ kind: 'staff', staff: updatedStaff });
+    }
+    await refreshData();
+    return { success: true };
+  };
+
+  // ===== ADMIN EDITS STAFF =====
+  const updateStaffByAdmin = async (staffId: string, updates: Partial<Pick<Staff, 'name' | 'role' | 'phone' | 'password' | 'is_active' | 'email'>>) => {
+    const { error } = await supabase.from('staff').update(updates).eq('id', staffId);
+    if (error) return { success: false, error: error.message };
     await refreshData();
     return { success: true };
   };
@@ -303,8 +340,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     <AppContext.Provider
       value={{
         user, authLoading,
-        loginStore, activateStore, loginStaff, logout,
-        updateStoreProfile,
+        loginStore, activateStore, loginStaff, loginAdmin, logout,
+        updateStoreProfile, updateStaffProfile, updateStaffByAdmin,
         products, stores, staff, orders, refreshData,
         cart, addToCart, removeFromCart, updateCartQty, clearCart, cartTotal, cartCount,
         placeOrder, updateOrderStatus, assignFleet,
