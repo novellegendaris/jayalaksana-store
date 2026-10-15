@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback, type React
 import { supabase } from './lib/supabase';
 import type {
   AuthUser, Store, Staff, Product, Order, CartItem, OrderItem, OrderStatus, Coordinates,
+  StockMovement,
 } from './types';
 
 interface AppState {
@@ -51,6 +52,11 @@ interface AppState {
   deleteStore: (storeId: string) => Promise<void>;
   deleteStaff: (staffId: string) => Promise<void>;
   deleteProduct: (productId: string) => Promise<void>;
+
+  // Stock movements
+  stockMovements: StockMovement[];
+  recordStockIn: (data: { productId: string; productName: string; quantity: number; supplier: string; notes: string; staffId: string; staffName: string }) => Promise<{ success: boolean; error?: string }>;
+  recordStockOpname: (data: { productId: string; productName: string; damagedQty: number; lostQty: number; notes: string; staffId: string; staffName: string }) => Promise<{ success: boolean; error?: string }>;
 }
 
 const AppContext = createContext<AppState | undefined>(undefined);
@@ -64,6 +70,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [stores, setStores] = useState<Store[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
 
   // Restore session + load initial data
@@ -78,16 +85,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refreshData = useCallback(async () => {
-    const [p, s, st, o] = await Promise.all([
+    const [p, s, st, o, sm] = await Promise.all([
       supabase.from('products').select('*').order('name'),
       supabase.from('stores').select('*').order('created_at', { ascending: false }),
       supabase.from('staff').select('*').order('name'),
       supabase.from('orders').select('*').order('created_at', { ascending: false }),
+      supabase.from('stock_movements').select('*').order('created_at', { ascending: false }),
     ]);
     if (p.data) setProducts(p.data as Product[]);
     if (s.data) setStores(s.data as Store[]);
     if (st.data) setStaff(st.data as Staff[]);
     if (o.data) setOrders(o.data as Order[]);
+    if (sm.data) setStockMovements(sm.data as StockMovement[]);
   }, []);
 
   useEffect(() => {
@@ -336,6 +345,70 @@ export function AppProvider({ children }: { children: ReactNode }) {
     await refreshData();
   };
 
+  // ===== STOCK MOVEMENTS =====
+  const recordStockIn = async (data: { productId: string; productName: string; quantity: number; supplier: string; notes: string; staffId: string; staffName: string }) => {
+    const { error: logError } = await supabase.from('stock_movements').insert({
+      product_id: data.productId,
+      product_name: data.productName,
+      type: 'masuk',
+      quantity: data.quantity,
+      supplier: data.supplier || null,
+      notes: data.notes || null,
+      staff_id: data.staffId,
+      staff_name: data.staffName,
+    });
+    if (logError) return { success: false, error: logError.message };
+
+    const product = products.find((p) => p.id === data.productId);
+    const newStock = (product?.stock ?? 0) + data.quantity;
+    const { error: prodError } = await supabase.from('products').update({ stock: newStock }).eq('id', data.productId);
+    if (prodError) return { success: false, error: prodError.message };
+
+    await refreshData();
+    return { success: true };
+  };
+
+  const recordStockOpname = async (data: { productId: string; productName: string; damagedQty: number; lostQty: number; notes: string; staffId: string; staffName: string }) => {
+    const insertions: Record<string, unknown>[] = [];
+
+    if (data.damagedQty > 0) {
+      insertions.push({
+        product_id: data.productId,
+        product_name: data.productName,
+        type: 'rusak',
+        quantity: data.damagedQty,
+        notes: data.notes || 'Barang rusak',
+        staff_id: data.staffId,
+        staff_name: data.staffName,
+      });
+    }
+    if (data.lostQty > 0) {
+      insertions.push({
+        product_id: data.productId,
+        product_name: data.productName,
+        type: 'hilang',
+        quantity: data.lostQty,
+        notes: data.notes || 'Barang hilang',
+        staff_id: data.staffId,
+        staff_name: data.staffName,
+      });
+    }
+
+    if (insertions.length === 0) return { success: false, error: 'Tidak ada jumlah rusak atau hilang yang dicatat' };
+
+    const { error: logError } = await supabase.from('stock_movements').insert(insertions);
+    if (logError) return { success: false, error: logError.message };
+
+    const product = products.find((p) => p.id === data.productId);
+    const totalReduction = data.damagedQty + data.lostQty;
+    const newStock = Math.max(0, (product?.stock ?? 0) - totalReduction);
+    const { error: prodError } = await supabase.from('products').update({ stock: newStock }).eq('id', data.productId);
+    if (prodError) return { success: false, error: prodError.message };
+
+    await refreshData();
+    return { success: true };
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -346,6 +419,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         cart, addToCart, removeFromCart, updateCartQty, clearCart, cartTotal, cartCount,
         placeOrder, updateOrderStatus, assignFleet,
         addStore, addStaff, addProduct, deleteStore, deleteStaff, deleteProduct,
+        stockMovements, recordStockIn, recordStockOpname,
       }}
     >
       {children}

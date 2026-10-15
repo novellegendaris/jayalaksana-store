@@ -1,4 +1,17 @@
 export type StaffRole = 'sales' | 'field_admin' | 'driver';
+
+export interface StockMovement {
+  id: string;
+  product_id: string;
+  product_name: string;
+  type: 'masuk' | 'opname' | 'rusak' | 'hilang';
+  quantity: number;
+  supplier: string | null;
+  notes: string | null;
+  staff_id: string | null;
+  staff_name: string | null;
+  created_at: string;
+}
 export type AppRoute = 'store' | 'staf' | 'admin';
 export type OrderStatus =
   | 'menunggu_konfirmasi'

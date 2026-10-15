@@ -4,6 +4,7 @@ import {
   Package, MapPin, User, Phone, Send, Clock, Hash, Navigation,
   ClipboardList, TrendingUp, Store as StoreIcon, Search, ChevronRight,
   ShoppingCart, Plus, Minus, Trash2, ShoppingBag, X, Settings, Save, KeyRound,
+  PackagePlus, ClipboardCheck, ArrowDownCircle, Boxes, AlertTriangle,
 } from 'lucide-react';
 import { useApp } from '../context';
 import { AppHeader } from '../components/AppHeader';
@@ -12,7 +13,7 @@ import { StatusBadge, statusConfig } from '../components/StatusBadge';
 import { formatRupiah, formatDate, cn } from '../utils';
 import type { Staff, Order, OrderStatus, Coordinates, StaffRole } from '../types';
 
-type StaffView = 'orders' | 'catalog' | 'deliveries' | 'stores' | 'profile';
+type StaffView = 'orders' | 'catalog' | 'deliveries' | 'stores' | 'stock_in' | 'stock_opname' | 'profile';
 
 export function StaffPortal() {
   const { user, authLoading } = useApp();
@@ -317,7 +318,7 @@ function SalesDashboard({ staff, view, setView }: { staff: Staff; view: StaffVie
 
 // ===== FIELD ADMIN DASHBOARD =====
 function FieldAdminDashboard({ staff, view, setView }: { staff: Staff; view: StaffView; setView: (v: StaffView) => void }) {
-  const { orders, stores, updateOrderStatus, assignFleet, staff: allStaff } = useApp();
+  const { orders, stores, products, updateOrderStatus, assignFleet, staff: allStaff } = useApp();
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Order | null>(null);
   const [driverId, setDriverId] = useState('');
@@ -337,6 +338,8 @@ function FieldAdminDashboard({ staff, view, setView }: { staff: Staff; view: Sta
 
   const navItems = [
     { label: 'Kelola Pesanan', active: view === 'orders', onClick: () => setView('orders') },
+    { label: 'Barang Masuk', active: view === 'stock_in', onClick: () => setView('stock_in') },
+    { label: 'Stock Opname', active: view === 'stock_opname', onClick: () => setView('stock_opname') },
     { label: 'Direktori Toko', active: view === 'stores', onClick: () => setView('stores') },
     { label: 'Profil', active: view === 'profile', onClick: () => setView('profile') },
   ];
@@ -394,14 +397,52 @@ function FieldAdminDashboard({ staff, view, setView }: { staff: Staff; view: Sta
                     </div>
                     <div className="px-4 py-3">
                       <div className="mb-4 space-y-1.5">
-                        {selected.items.map((item, i) => (
-                          <div key={i} className="flex justify-between text-sm">
-                            <span className="text-gray-600">{item.name} × {item.quantity} {item.unit}</span>
-                            <span className="font-medium">{formatRupiah(item.price * item.quantity)}</span>
-                          </div>
-                        ))}
+                        {selected.items.map((item, i) => {
+                          const product = products.find((p) => p.id === item.productId);
+                          const currentStock = product?.stock ?? 0;
+                          const isOverStock = item.quantity > currentStock;
+                          return (
+                            <div key={i} className="text-sm">
+                              <div className="flex justify-between">
+                                <span className={cn('text-gray-600', isOverStock && 'text-red-600 font-semibold')}>
+                                  {item.name} × {item.quantity} {item.unit}
+                                </span>
+                                <span className="font-medium">{formatRupiah(item.price * item.quantity)}</span>
+                              </div>
+                              <div className={cn('mt-0.5 flex items-center gap-1 text-xs', isOverStock ? 'text-red-600' : 'text-gray-400')}>
+                                {isOverStock ? (
+                                  <>
+                                    <AlertTriangle className="h-3 w-3" />
+                                    Stok tersedia: {currentStock} {item.unit} — pesanan melebihi stok!
+                                  </>
+                                ) : (
+                                  <>
+                                    <Boxes className="h-3 w-3" />
+                                    Stok tersedia: {currentStock} {item.unit}
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
                         <div className="flex justify-between border-t border-gray-100 pt-2 text-sm font-bold"><span>Total</span><span className="text-blue-700">{formatRupiah(selected.total)}</span></div>
                       </div>
+
+                      {(() => {
+                        const hasOverStock = selected.items.some((item) => {
+                          const product = products.find((p) => p.id === item.productId);
+                          return item.quantity > (product?.stock ?? 0);
+                        });
+                        if (hasOverStock && selected.status === 'menunggu_konfirmasi') {
+                          return (
+                            <div className="mb-3 flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2.5 text-sm text-red-700">
+                              <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                              Pesanan tidak dapat diproses karena ada item yang melebihi stok. Lakukan pencatatan barang masuk terlebih dahulu.
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
 
                       {/* Store location map */}
                       {(() => {
@@ -418,13 +459,24 @@ function FieldAdminDashboard({ staff, view, setView }: { staff: Staff; view: Sta
                         return null;
                       })()}
 
-                      {selected.status === 'menunggu_konfirmasi' && (
-                        <button onClick={() => { updateOrderStatus(selected.id, 'diproses'); setSelected({ ...selected, status: 'diproses' }); }} className="flex w-full items-center justify-center gap-2 rounded-lg bg-amber-500 py-2.5 text-sm font-semibold text-white hover:bg-amber-600">
-                          <Package className="h-4 w-4" /> Konfirmasi & Proses
-                        </button>
-                      )}
+                      {(() => {
+                        const hasOverStock = selected.items.some((item) => {
+                          const product = products.find((p) => p.id === item.productId);
+                          return item.quantity > (product?.stock ?? 0);
+                        });
+                        return (
+                          <>
+                            {selected.status === 'menunggu_konfirmasi' && (
+                              <button
+                                onClick={() => { updateOrderStatus(selected.id, 'diproses'); setSelected({ ...selected, status: 'diproses' }); }}
+                                disabled={hasOverStock}
+                                className="flex w-full items-center justify-center gap-2 rounded-lg bg-amber-500 py-2.5 text-sm font-semibold text-white hover:bg-amber-600 disabled:cursor-not-allowed disabled:bg-gray-300"
+                              >
+                                <Package className="h-4 w-4" /> {hasOverStock ? 'Stok Tidak Mencukupi' : 'Konfirmasi & Proses'}
+                              </button>
+                            )}
 
-                      {selected.status === 'diproses' && (
+                            {selected.status === 'diproses' && (
                         <div className="space-y-2 rounded-lg border border-blue-100 bg-blue-50 p-3">
                           <p className="text-sm font-semibold text-blue-900">Penugasan Driver</p>
                           <select value={driverId} onChange={(e) => setDriverId(e.target.value)} className="w-full rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm">
@@ -439,13 +491,16 @@ function FieldAdminDashboard({ staff, view, setView }: { staff: Staff; view: Sta
                         </div>
                       )}
 
-                      {selected.status === 'dalam_perjalanan' && selected.fleet_info && (
+                      {selected.status === 'dalam_perjalangan' && selected.fleet_info && (
                         <div className="grid grid-cols-3 gap-2 rounded-lg bg-blue-50 p-3 text-xs">
                           <div><p className="text-blue-600">Driver</p><p className="font-semibold">{selected.fleet_info.driverName}</p></div>
                           <div><p className="text-blue-600">Plat</p><p className="font-semibold">{selected.fleet_info.plateNumber}</p></div>
                           <div><p className="text-blue-600">ETA</p><p className="font-semibold">{selected.fleet_info.eta}</p></div>
                         </div>
                       )}
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
                 ) : (
@@ -459,6 +514,10 @@ function FieldAdminDashboard({ staff, view, setView }: { staff: Staff; view: Sta
           </div>
         </>
       )}
+
+      {view === 'stock_in' && <StockInView staff={staff} />}
+
+      {view === 'stock_opname' && <StockOpnameView staff={staff} />}
 
       {view === 'stores' && (
         <div className="mx-auto max-w-7xl px-4 py-5">
@@ -625,6 +684,290 @@ function DriverDashboard({ staff, view, setView }: { staff: Staff; view: StaffVi
       )}
 
       {view === 'profile' && <StaffProfile staff={staff} />}
+    </div>
+  );
+}
+
+// ===== STOCK IN (Pencatatan Barang Masuk) =====
+function StockInView({ staff }: { staff: Staff }) {
+  const { products, recordStockIn, stockMovements } = useApp();
+  const [productId, setProductId] = useState('');
+  const [quantity, setQuantity] = useState('');
+  const [supplier, setSupplier] = useState('');
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  const masukHistory = stockMovements.filter((m) => m.type === 'masuk').slice(0, 20);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSuccess(null);
+    if (!productId) { setError('Pilih produk terlebih dahulu'); return; }
+    const qty = parseInt(quantity, 10);
+    if (!qty || qty <= 0) { setError('Jumlah harus lebih dari 0'); return; }
+
+    const product = products.find((p) => p.id === productId);
+    if (!product) { setError('Produk tidak ditemukan'); return; }
+
+    setSaving(true);
+    const result = await recordStockIn({
+      productId,
+      productName: product.name,
+      quantity: qty,
+      supplier,
+      notes,
+      staffId: staff.id,
+      staffName: staff.name,
+    });
+    setSaving(false);
+
+    if (result.success) {
+      setSuccess(`${qty} ${product.unit} ${product.name} berhasil ditambahkan ke stok`);
+      setProductId(''); setQuantity(''); setSupplier(''); setNotes('');
+      setTimeout(() => setSuccess(null), 4000);
+    } else {
+      setError(result.error ?? 'Gagal mencatat barang masuk');
+    }
+  };
+
+  return (
+    <div className="mx-auto max-w-4xl px-4 py-5">
+      <div className="mb-4">
+        <h1 className="flex items-center gap-2 text-lg font-bold text-gray-900">
+          <PackagePlus className="h-5 w-5 text-blue-600" /> Pencatatan Barang Masuk
+        </h1>
+        <p className="text-sm text-gray-500">Catat barang yang baru datang dari supplier. Stok produk akan otomatis bertambah.</p>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[420px_1fr]">
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="space-y-3 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+          {error && (
+            <div className="flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2.5 text-sm text-red-700">
+              <AlertCircle className="h-4 w-4 flex-shrink-0" /> {error}
+            </div>
+          )}
+          {success && (
+            <div className="flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2.5 text-sm text-emerald-700">
+              <CheckCircle2 className="h-4 w-4 flex-shrink-0" /> {success}
+            </div>
+          )}
+
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-gray-500">Pilih Produk</label>
+            <select value={productId} onChange={(e) => setProductId(e.target.value)} className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none" required>
+              <option value="">-- Pilih Produk --</option>
+              {products.map((p) => (
+                <option key={p.id} value={p.id}>{p.name} (Stok: {p.stock} {p.unit})</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-gray-500">Jumlah Masuk</label>
+            <input type="number" min="1" value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder="0" className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none" required />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-gray-500">Supplier</label>
+            <input type="text" value={supplier} onChange={(e) => setSupplier(e.target.value)} placeholder="Nama supplier / distribusi" className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none" />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-gray-500">Catatan (opsional)</label>
+            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Catatan tambahan..." rows={2} className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none" />
+          </div>
+
+          <button type="submit" disabled={saving} className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:bg-gray-300">
+            <ArrowDownCircle className="h-4 w-4" /> {saving ? 'Menyimpan...' : 'Catat Barang Masuk'}
+          </button>
+        </form>
+
+        {/* History */}
+        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+          <h3 className="mb-3 text-sm font-bold text-gray-900">Riwayat Barang Masuk Terbaru</h3>
+          {masukHistory.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <PackagePlus className="mb-2 h-8 w-8 text-gray-300" />
+              <p className="text-sm text-gray-400">Belum ada catatan barang masuk</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {masukHistory.map((m) => (
+                <div key={m.id} className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2.5">
+                  <div>
+                    <p className="text-sm font-medium">{m.product_name}</p>
+                    <p className="text-xs text-gray-400">{m.supplier ?? '—'} · {formatDate(m.created_at)}</p>
+                    {m.notes && <p className="text-xs text-gray-400 italic">"{m.notes}"</p>}
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-bold text-emerald-600">+{m.quantity}</p>
+                    <p className="text-[10px] text-gray-400">{m.staff_name ?? ''}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ===== STOCK OPNAME (Penyesuaian Stok) =====
+function StockOpnameView({ staff }: { staff: Staff }) {
+  const { products, recordStockOpname, stockMovements } = useApp();
+  const [productId, setProductId] = useState('');
+  const [damagedQty, setDamagedQty] = useState('');
+  const [lostQty, setLostQty] = useState('');
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  const opnameHistory = stockMovements.filter((m) => m.type === 'rusak' || m.type === 'hilang').slice(0, 20);
+
+  const selectedProduct = products.find((p) => p.id === productId);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSuccess(null);
+    if (!productId) { setError('Pilih produk terlebih dahulu'); return; }
+
+    const damaged = parseInt(damagedQty, 10) || 0;
+    const lost = parseInt(lostQty, 10) || 0;
+
+    if (damaged === 0 && lost === 0) { setError('Isi minimal salah satu: barang rusak atau hilang'); return; }
+
+    if (!selectedProduct) { setError('Produk tidak ditemukan'); return; }
+
+    const totalReduction = damaged + lost;
+    if (totalReduction > selectedProduct.stock) {
+      setError(`Total pengurangan (${totalReduction}) melebihi stok saat ini (${selectedProduct.stock})`);
+      return;
+    }
+
+    setSaving(true);
+    const result = await recordStockOpname({
+      productId,
+      productName: selectedProduct.name,
+      damagedQty: damaged,
+      lostQty: lost,
+      notes,
+      staffId: staff.id,
+      staffName: staff.name,
+    });
+    setSaving(false);
+
+    if (result.success) {
+      const msg = `Stok ${selectedProduct.name} disesuaikan: ${damaged > 0 ? damaged + ' rusak' : ''}${damaged > 0 && lost > 0 ? ', ' : ''}${lost > 0 ? lost + ' hilang' : ''}`;
+      setSuccess(msg);
+      setProductId(''); setDamagedQty(''); setLostQty(''); setNotes('');
+      setTimeout(() => setSuccess(null), 4000);
+    } else {
+      setError(result.error ?? 'Gagal mencatat stock opname');
+    }
+  };
+
+  return (
+    <div className="mx-auto max-w-4xl px-4 py-5">
+      <div className="mb-4">
+        <h1 className="flex items-center gap-2 text-lg font-bold text-gray-900">
+          <ClipboardCheck className="h-5 w-5 text-blue-600" /> Stock Opname & Penyesuaian
+        </h1>
+        <p className="text-sm text-gray-500">Catat penyesuaian stok berkala. Stok akan otomatis berkurang berdasarkan barang rusak/hilang.</p>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[420px_1fr]">
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="space-y-3 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+          {error && (
+            <div className="flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2.5 text-sm text-red-700">
+              <AlertCircle className="h-4 w-4 flex-shrink-0" /> {error}
+            </div>
+          )}
+          {success && (
+            <div className="flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2.5 text-sm text-emerald-700">
+              <CheckCircle2 className="h-4 w-4 flex-shrink-0" /> {success}
+            </div>
+          )}
+
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-gray-500">Pilih Produk</label>
+            <select value={productId} onChange={(e) => setProductId(e.target.value)} className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none" required>
+              <option value="">-- Pilih Produk --</option>
+              {products.map((p) => (
+                <option key={p.id} value={p.id}>{p.name} (Stok: {p.stock} {p.unit})</option>
+              ))}
+            </select>
+            {selectedProduct && (
+              <p className="mt-1.5 flex items-center gap-1.5 text-xs text-gray-500">
+                <Boxes className="h-3.5 w-3.5" /> Stok saat ini: <span className="font-bold text-gray-700">{selectedProduct.stock} {selectedProduct.unit}</span>
+              </p>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-gray-500">Barang Rusak</label>
+              <input type="number" min="0" value={damagedQty} onChange={(e) => setDamagedQty(e.target.value)} placeholder="0" className="w-full rounded-lg border border-red-200 px-3 py-2.5 text-sm focus:border-red-400 focus:outline-none" />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-gray-500">Barang Hilang</label>
+              <input type="number" min="0" value={lostQty} onChange={(e) => setLostQty(e.target.value)} placeholder="0" className="w-full rounded-lg border border-amber-200 px-3 py-2.5 text-sm focus:border-amber-400 focus:outline-none" />
+            </div>
+          </div>
+
+          {selectedProduct && (parseInt(damagedQty, 10) > 0 || parseInt(lostQty, 10) > 0) && (
+            <div className="rounded-lg bg-amber-50 px-3 py-2.5 text-xs text-amber-700">
+              Total pengurangan stok: <span className="font-bold">{(parseInt(damagedQty, 10) || 0) + (parseInt(lostQty, 10) || 0)} {selectedProduct.unit}</span>
+              {' → Stok setelah: '}
+              <span className="font-bold">{Math.max(0, selectedProduct.stock - (parseInt(damagedQty, 10) || 0) - (parseInt(lostQty, 10) || 0))} {selectedProduct.unit}</span>
+            </div>
+          )}
+
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-gray-500">Catatan (opsional)</label>
+            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Alasan penyesuaian, detail kerusakan, dll..." rows={2} className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none" />
+          </div>
+
+          <button type="submit" disabled={saving} className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:bg-gray-300">
+            <ClipboardCheck className="h-4 w-4" /> {saving ? 'Menyimpan...' : 'Simpan Penyesuaian'}
+          </button>
+        </form>
+
+        {/* History */}
+        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+          <h3 className="mb-3 text-sm font-bold text-gray-900">Riwayat Penyesuaian Terbaru</h3>
+          {opnameHistory.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <ClipboardCheck className="mb-2 h-8 w-8 text-gray-300" />
+              <p className="text-sm text-gray-400">Belum ada catatan penyesuaian</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {opnameHistory.map((m) => (
+                <div key={m.id} className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2.5">
+                  <div>
+                    <p className="text-sm font-medium">{m.product_name}</p>
+                    <p className="text-xs text-gray-400">{m.staff_name ?? ''} · {formatDate(m.created_at)}</p>
+                    {m.notes && <p className="text-xs text-gray-400 italic">"{m.notes}"</p>}
+                  </div>
+                  <div className="text-right">
+                    <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium', m.type === 'rusak' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700')}>
+                      {m.type === 'rusak' ? 'Rusak' : 'Hilang'} -{m.quantity}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
