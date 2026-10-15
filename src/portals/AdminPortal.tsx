@@ -362,8 +362,8 @@ function StaffTab() {
     }
   };
 
-  const roleLabels: Record<StaffRole, string> = { sales: 'Sales', field_admin: 'Admin Lapangan', driver: 'Driver' };
-  const roleColors: Record<StaffRole, string> = { sales: 'bg-blue-50 text-blue-700', field_admin: 'bg-amber-50 text-amber-700', driver: 'bg-emerald-50 text-emerald-700' };
+  const roleLabels: Record<StaffRole, string> = { sales: 'Sales', field_admin: 'Admin Lapangan', driver: 'Driver', finance: 'Admin Keuangan' };
+  const roleColors: Record<StaffRole, string> = { sales: 'bg-blue-50 text-blue-700', field_admin: 'bg-amber-50 text-amber-700', driver: 'bg-emerald-50 text-emerald-700', finance: 'bg-purple-50 text-purple-700' };
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-5">
@@ -393,6 +393,7 @@ function StaffTab() {
                 <option value="sales">Sales</option>
                 <option value="field_admin">Admin Lapangan</option>
                 <option value="driver">Driver</option>
+                <option value="finance">Admin Keuangan</option>
               </select>
               <input type="tel" placeholder="Nomor HP (opsional)" value={newPhone} onChange={(e) => setNewPhone(e.target.value)} className="w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm focus:border-emerald-500 focus:outline-none" />
             </div>
@@ -527,6 +528,7 @@ function EditStaffModal({ staff, onClose, onSave }: {
               <option value="sales">Sales</option>
               <option value="field_admin">Admin Lapangan</option>
               <option value="driver">Driver</option>
+              <option value="finance">Admin Keuangan</option>
             </select>
           </div>
           <div>

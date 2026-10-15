@@ -5,15 +5,17 @@ import {
   ClipboardList, TrendingUp, Store as StoreIcon, Search, ChevronRight,
   ShoppingCart, Plus, Minus, Trash2, ShoppingBag, X, Settings, Save, KeyRound,
   PackagePlus, ClipboardCheck, ArrowDownCircle, Boxes, AlertTriangle,
+  FileText, Wallet, Receipt, Calendar, DollarSign, Ban, XCircle, FileSpreadsheet,
 } from 'lucide-react';
 import { useApp } from '../context';
 import { AppHeader } from '../components/AppHeader';
 import { GoogleMapPicker } from '../components/GoogleMapPicker';
 import { StatusBadge, statusConfig } from '../components/StatusBadge';
 import { formatRupiah, formatDate, cn } from '../utils';
-import type { Staff, Order, OrderStatus, Coordinates, StaffRole } from '../types';
+import type { Staff, Order, OrderStatus, Coordinates, StaffRole, SuratJalan, SuratJalanItem, Invoice, PaymentMethod } from '../types';
+import { FinanceDashboard, type FinanceView } from './FinancePortal';
 
-type StaffView = 'orders' | 'catalog' | 'deliveries' | 'stores' | 'stock_in' | 'stock_opname' | 'profile';
+type StaffView = 'orders' | 'catalog' | 'deliveries' | 'stores' | 'stock_in' | 'stock_opname' | 'surat_jalan' | 'invoices' | 'receivables' | 'sales_recap' | 'profile';
 
 export function StaffPortal() {
   const { user, authLoading } = useApp();
@@ -104,6 +106,7 @@ function StaffLogin() {
               <p className="mt-0.5">Sales: sales@armadaexpress.com / sales123</p>
               <p>Admin Lapangan: adminlapangan@armadaexpress.com / admin123</p>
               <p>Driver: driver@armadaexpress.com / driver123</p>
+              <p>Admin Keuangan: keuangan@armadaexpress.com / keuangan123</p>
             </div>
           </form>
         </div>
@@ -125,6 +128,7 @@ function StaffDashboard({ staff }: { staff: Staff }) {
   if (staff.role === 'sales') return <SalesDashboard staff={staff} view={view} setView={setView} />;
   if (staff.role === 'field_admin') return <FieldAdminDashboard staff={staff} view={view} setView={setView} />;
   if (staff.role === 'driver') return <DriverDashboard staff={staff} view={view} setView={setView} />;
+  if (staff.role === 'finance') return <FinanceDashboard staff={staff} view={view as FinanceView} setView={(v) => setView(v as StaffView)} />;
   return null;
 }
 
@@ -318,12 +322,16 @@ function SalesDashboard({ staff, view, setView }: { staff: Staff; view: StaffVie
 
 // ===== FIELD ADMIN DASHBOARD =====
 function FieldAdminDashboard({ staff, view, setView }: { staff: Staff; view: StaffView; setView: (v: StaffView) => void }) {
-  const { orders, stores, products, updateOrderStatus, assignFleet, staff: allStaff } = useApp();
+  const { orders, stores, products, updateOrderStatus, assignFleet, staff: allStaff, suratJalan, createSuratJalan } = useApp();
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Order | null>(null);
   const [driverId, setDriverId] = useState('');
   const [plateNumber, setPlateNumber] = useState('');
   const [eta, setEta] = useState('');
+  const [nomorSJ, setNomorSJ] = useState('');
+  const [catatanSJ, setCatatanSJ] = useState('');
+  const [sjError, setSjError] = useState<string | null>(null);
+  const [sjSuccess, setSjSuccess] = useState<string | null>(null);
 
   const drivers = allStaff.filter((s) => s.role === 'driver' && s.is_active);
   const filtered = orders.filter((o) => o.id.toLowerCase().includes(search.toLowerCase()) || (o.store_name ?? '').toLowerCase().includes(search.toLowerCase()));
@@ -338,6 +346,7 @@ function FieldAdminDashboard({ staff, view, setView }: { staff: Staff; view: Sta
 
   const navItems = [
     { label: 'Kelola Pesanan', active: view === 'orders', onClick: () => setView('orders') },
+    { label: 'Surat Jalan', active: view === 'surat_jalan', onClick: () => setView('surat_jalan') },
     { label: 'Barang Masuk', active: view === 'stock_in', onClick: () => setView('stock_in') },
     { label: 'Stock Opname', active: view === 'stock_opname', onClick: () => setView('stock_opname') },
     { label: 'Direktori Toko', active: view === 'stores', onClick: () => setView('stores') },
@@ -478,20 +487,39 @@ function FieldAdminDashboard({ staff, view, setView }: { staff: Staff; view: Sta
 
                             {selected.status === 'diproses' && (
                         <div className="space-y-2 rounded-lg border border-blue-100 bg-blue-50 p-3">
-                          <p className="text-sm font-semibold text-blue-900">Penugasan Driver</p>
+                          <p className="text-sm font-semibold text-blue-900">Penugasan Driver & Surat Jalan</p>
+                          <div>
+                            <label className="mb-1 block text-xs font-semibold text-blue-700">Nomor Surat Jalan (Wajib)</label>
+                            <input type="text" placeholder="SJ-20261015-001" value={nomorSJ} onChange={(e) => setNomorSJ(e.target.value)} className="w-full rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm" />
+                          </div>
                           <select value={driverId} onChange={(e) => setDriverId(e.target.value)} className="w-full rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm">
                             <option value="">Pilih Driver...</option>
                             {drivers.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
                           </select>
                           <input type="text" placeholder="Plat Nomor (B 1234 ABC)" value={plateNumber} onChange={(e) => setPlateNumber(e.target.value)} className="w-full rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm" />
                           <input type="text" placeholder="ETA (30 Menit)" value={eta} onChange={(e) => setEta(e.target.value)} className="w-full rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm" />
-                          <button onClick={() => { const d = drivers.find((x) => x.id === driverId); if (d) { assignFleet(selected.id, d.id, d.name, plateNumber, eta || '30 Menit'); setSelected({ ...selected, status: 'dalam_perjalanan', driver_name: d.name, fleet_info: { driverName: d.name, plateNumber, eta: eta || '30 Menit' } }); } }} disabled={!driverId || !plateNumber} className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:bg-gray-300">
-                            <Send className="h-4 w-4" /> Kirim Driver
+                          <input type="text" placeholder="Catatan Surat Jalan (opsional)" value={catatanSJ} onChange={(e) => setCatatanSJ(e.target.value)} className="w-full rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm" />
+                          {sjError && <p className="text-xs text-red-600">{sjError}</p>}
+                          {sjSuccess && <p className="text-xs text-emerald-600">{sjSuccess}</p>}
+                          <button onClick={async () => {
+                            if (!nomorSJ.trim()) { setSjError('Nomor Surat Jalan wajib diisi'); return; }
+                            setSjError(null);
+                            const d = drivers.find((x) => x.id === driverId);
+                            if (d) {
+                              const sjResult = await createSuratJalan({ orderId: selected.id, nomorSuratJalan: nomorSJ.trim(), driverId: d.id, driverName: d.name, catatan: catatanSJ });
+                              if (!sjResult.success) { setSjError(sjResult.error ?? 'Gagal membuat Surat Jalan'); return; }
+                              assignFleet(selected.id, d.id, d.name, plateNumber, eta || '30 Menit');
+                              setSjSuccess(`Surat Jalan ${nomorSJ.trim()} berhasil diterbitkan`);
+                              setSelected({ ...selected, status: 'dalam_perjalanan', driver_name: d.name, fleet_info: { driverName: d.name, plateNumber, eta: eta || '30 Menit' } });
+                              setNomorSJ(''); setCatatanSJ('');
+                            }
+                          }} disabled={!driverId || !plateNumber || !nomorSJ.trim()} className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:bg-gray-300">
+                            <Send className="h-4 w-4" /> Terbitkan SJ & Kirim Driver
                           </button>
                         </div>
                       )}
 
-                      {selected.status === 'dalam_perjalangan' && selected.fleet_info && (
+                      {selected.status === 'dalam_perjalanan' && selected.fleet_info && (
                         <div className="grid grid-cols-3 gap-2 rounded-lg bg-blue-50 p-3 text-xs">
                           <div><p className="text-blue-600">Driver</p><p className="font-semibold">{selected.fleet_info.driverName}</p></div>
                           <div><p className="text-blue-600">Plat</p><p className="font-semibold">{selected.fleet_info.plateNumber}</p></div>
@@ -518,6 +546,8 @@ function FieldAdminDashboard({ staff, view, setView }: { staff: Staff; view: Sta
       {view === 'stock_in' && <StockInView staff={staff} />}
 
       {view === 'stock_opname' && <StockOpnameView staff={staff} />}
+
+      {view === 'surat_jalan' && <SuratJalanView />}
 
       {view === 'stores' && (
         <div className="mx-auto max-w-7xl px-4 py-5">
@@ -548,20 +578,128 @@ function FieldAdminDashboard({ staff, view, setView }: { staff: Staff; view: Sta
   );
 }
 
-// ===== DRIVER DASHBOARD (Mobile-First) =====
-function DriverDashboard({ staff, view, setView }: { staff: Staff; view: StaffView; setView: (v: StaffView) => void }) {
-  const { orders, stores, updateOrderStatus } = useApp();
-  const [selected, setSelected] = useState<Order | null>(null);
+// ===== SURAT JALAN VIEW (FieldAdmin) =====
+function SuratJalanView() {
+  const { suratJalan } = useApp();
+  return (
+    <div className="mx-auto max-w-7xl px-4 py-5">
+      <h1 className="mb-4 flex items-center gap-2 text-lg font-bold text-gray-900">
+        <FileText className="h-5 w-5 text-blue-600" /> Daftar Surat Jalan
+      </h1>
+      {suratJalan.length === 0 ? (
+        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 py-12 text-center">
+          <FileText className="mb-2 h-10 w-10 text-gray-300" />
+          <p className="text-sm text-gray-500">Belum ada Surat Jalan. Terbitkan dari menu Kelola Pesanan.</p>
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+          <table className="w-full text-sm">
+            <thead className="border-b border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-500">
+              <tr>
+                <th className="px-4 py-3">No. Surat Jalan</th>
+                <th className="px-4 py-3">Toko</th>
+                <th className="px-4 py-3">Driver</th>
+                <th className="px-4 py-3">Items</th>
+                <th className="px-4 py-3">Penolakan</th>
+                <th className="px-4 py-3">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {suratJalan.map((sj) => {
+                const totalRejected = sj.items.reduce((s, i) => s + i.rejected_qty, 0);
+                return (
+                  <tr key={sj.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 font-medium">{sj.nomor_surat_jalan}</td>
+                    <td className="px-4 py-3 text-gray-600">{sj.store_name}</td>
+                    <td className="px-4 py-3 text-gray-500">{sj.driver_name ?? '—'}</td>
+                    <td className="px-4 py-3 text-gray-500">{sj.items.length} item</td>
+                    <td className="px-4 py-3">
+                      {totalRejected > 0 ? (
+                        <span className="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-700">{totalRejected} ditolak</span>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-medium', sj.status === 'aktif' ? 'bg-blue-50 text-blue-700' : sj.status === 'selesai' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-50 text-gray-500')}>
+                        {sj.status === 'aktif' ? 'Aktif' : sj.status === 'selesai' ? 'Selesai' : 'Dibatalkan'}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
 
-  const myDeliveries = orders.filter((o) => o.driver_id === staff.id || o.driver_name === staff.name);
-  const active = myDeliveries.filter((o) => o.status === 'dalam_perjalanan');
-  const completed = myDeliveries.filter((o) => o.status === 'selesai');
+// ===== DRIVER DASHBOARD (Surat Jalan + Rejection) =====
+function DriverDashboard({ staff, view, setView }: { staff: Staff; view: StaffView; setView: (v: StaffView) => void }) {
+  const { suratJalan, stores, updateSuratJalanRejections, completeSuratJalan } = useApp();
+  const [selectedSJ, setSelectedSJ] = useState<SuratJalan | null>(null);
+  const [rejectionInputs, setRejectionInputs] = useState<Record<number, { qty: string; reason: string }>>({});
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  const mySJ = suratJalan.filter((sj) => sj.driver_id === staff.id || sj.driver_name === staff.name);
+  const activeSJ = mySJ.filter((sj) => sj.status === 'aktif');
+  const completedSJ = mySJ.filter((sj) => sj.status === 'selesai');
 
   const navItems = [
-    { label: 'Pengiriman Aktif', active: view === 'deliveries', onClick: () => setView('deliveries') },
+    { label: 'Surat Jalan Aktif', active: view === 'deliveries', onClick: () => setView('deliveries') },
     { label: 'Riwayat', active: view === 'orders', onClick: () => setView('orders') },
     { label: 'Profil', active: view === 'profile', onClick: () => setView('profile') },
   ];
+
+  const handleOpenSJ = (sj: SuratJalan) => {
+    setSelectedSJ(sj);
+    const inputs: Record<number, { qty: string; reason: string }> = {};
+    sj.items.forEach((item, i) => {
+      inputs[i] = { qty: String(item.rejected_qty || ''), reason: item.rejection_reason ?? '' };
+    });
+    setRejectionInputs(inputs);
+    setError(null); setSuccess(null);
+  };
+
+  const handleSaveRejections = async () => {
+    if (!selectedSJ) return;
+    setSaving(true); setError(null);
+    const updatedItems: SuratJalanItem[] = selectedSJ.items.map((item, i) => {
+      const input = rejectionInputs[i] ?? { qty: '0', reason: '' };
+      const rejectedQty = parseInt(input.qty, 10) || 0;
+      return {
+        ...item,
+        rejected_qty: rejectedQty,
+        rejection_reason: rejectedQty > 0 ? (input.reason || 'Tidak ada alasan') : null,
+      };
+    });
+    const result = await updateSuratJalanRejections(selectedSJ.id, updatedItems);
+    setSaving(false);
+    if (result.success) {
+      setSuccess('Catatan penolakan berhasil disimpan');
+      setTimeout(() => setSuccess(null), 3000);
+      setSelectedSJ(null);
+    } else {
+      setError(result.error ?? 'Gagal menyimpan');
+    }
+  };
+
+  const handleComplete = async () => {
+    if (!selectedSJ) return;
+    await handleSaveRejections();
+    setSaving(true);
+    const result = await completeSuratJalan(selectedSJ.id);
+    setSaving(false);
+    if (result.success) {
+      setSelectedSJ(null);
+    } else {
+      setError(result.error ?? 'Gagal menyelesaikan Surat Jalan');
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -577,105 +715,178 @@ function DriverDashboard({ staff, view, setView }: { staff: Staff; view: StaffVi
               </div>
               <div>
                 <p className="text-sm font-bold">{staff.name}</p>
-                <p className="text-xs text-blue-100">Driver Armada · {staff.phone}</p>
+                <p className="text-xs text-blue-100">Driver Armada · {staff.phone ?? 'N/A'}</p>
               </div>
             </div>
             <div className="mt-3 grid grid-cols-2 gap-3">
               <div className="rounded-lg bg-white/15 p-2.5 text-center">
-                <p className="text-2xl font-bold">{active.length}</p>
-                <p className="text-xs text-blue-100">Aktif</p>
+                <p className="text-2xl font-bold">{activeSJ.length}</p>
+                <p className="text-xs text-blue-100">Surat Jalan Aktif</p>
               </div>
               <div className="rounded-lg bg-white/15 p-2.5 text-center">
-                <p className="text-2xl font-bold">{completed.length}</p>
+                <p className="text-2xl font-bold">{completedSJ.length}</p>
                 <p className="text-xs text-blue-100">Selesai</p>
               </div>
             </div>
           </div>
 
-          {/* Active deliveries */}
-          <h2 className="mb-3 text-sm font-bold text-gray-900">Pengiriman Aktif</h2>
-          {active.length === 0 ? (
-            <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 py-10 text-center">
-              <Package className="mb-2 h-10 w-10 text-gray-300" />
-              <p className="text-sm text-gray-500">Tidak ada pengiriman aktif</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {active.map((order) => {
-                const store = stores.find((s) => s.id === order.store_id);
-                return (
-                  <div key={order.id} className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-                    <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-                      <div>
-                        <p className="text-sm font-bold">{order.id.slice(0, 8).toUpperCase()}</p>
-                        <p className="text-xs text-gray-500">{order.store_name}</p>
-                      </div>
-                      <StatusBadge status={order.status} />
-                    </div>
-                    {order.fleet_info && (
-                      <div className="px-4 py-2 text-xs text-gray-500">
-                        <p>Plat: <span className="font-semibold">{order.fleet_info.plateNumber}</span> · ETA: <span className="font-semibold">{order.fleet_info.eta}</span></p>
-                      </div>
-                    )}
-                    {store?.address_text && (
-                      <div className="px-4 py-2 text-xs text-gray-500">
-                        <MapPin className="mr-1 inline h-3 w-3 text-blue-600" />
-                        {store.address_text}
-                      </div>
-                    )}
-                    {store?.lat && store?.lng && (
-                      <div className="px-4 pb-3">
-                        <GoogleMapPicker coords={{ lat: store.lat, lng: store.lng }} address={store.address_text} onChange={() => {}} height="200px" searchable={false} readOnly />
-                      </div>
-                    )}
-                    <div className="border-t border-gray-100 px-4 py-3">
-                      <button onClick={() => { updateOrderStatus(order.id, 'selesai'); }} className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700">
-                        <CheckCircle2 className="h-4 w-4" /> Tandai Tiba di Tujuan
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          {selectedSJ ? (
+            <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+              <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+                <div>
+                  <p className="text-sm font-bold">{selectedSJ.nomor_surat_jalan}</p>
+                  <p className="text-xs text-gray-500">{selectedSJ.store_name}</p>
+                </div>
+                <button onClick={() => setSelectedSJ(null)} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
+              </div>
 
-          {/* Quick completed */}
-          {completed.length > 0 && (
-            <div className="mt-6">
-              <h2 className="mb-3 text-sm font-bold text-gray-900">Baru Selesai</h2>
-              <div className="space-y-2">
-                {completed.slice(0, 3).map((order) => (
-                  <div key={order.id} className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-2.5">
-                    <div>
-                      <p className="text-sm font-semibold">{order.id.slice(0, 8).toUpperCase()}</p>
-                      <p className="text-xs text-gray-500">{order.store_name}</p>
+              {(() => {
+                const store = stores.find((s) => s.id === selectedSJ.store_id);
+                if (store?.address_text) {
+                  return (
+                    <div className="px-4 py-2 text-xs text-gray-500">
+                      <MapPin className="mr-1 inline h-3 w-3 text-blue-600" />
+                      {store.address_text}
                     </div>
-                    <StatusBadge status={order.status} />
-                  </div>
-                ))}
+                  );
+                }
+                return null;
+              })()}
+
+              {selectedSJ.catatan && (
+                <div className="mx-4 my-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                  Catatan: {selectedSJ.catatan}
+                </div>
+              )}
+
+              <div className="px-4 py-3">
+                <p className="mb-2 text-xs font-semibold text-gray-500">Manifes Barang & Catatan Penolakan</p>
+                {error && <div className="mb-2 flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700"><AlertCircle className="h-3 w-3" /> {error}</div>}
+                {success && <div className="mb-2 flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-700"><CheckCircle2 className="h-3 w-3" /> {success}</div>}
+                <div className="space-y-2">
+                  {selectedSJ.items.map((item, i) => {
+                    const input = rejectionInputs[i] ?? { qty: '0', reason: '' };
+                    const rejected = parseInt(input.qty, 10) || 0;
+                    return (
+                      <div key={i} className="rounded-lg border border-gray-100 p-3">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-medium">{item.name}</p>
+                            <p className="text-xs text-gray-400">Dikirim: {item.quantity} {item.unit}</p>
+                          </div>
+                          <span className="text-xs font-bold text-gray-600">{formatRupiah(item.price * item.quantity)}</span>
+                        </div>
+                        <div className="mt-2 grid grid-cols-[80px_1fr] gap-2">
+                          <div>
+                            <label className="mb-0.5 block text-[10px] font-semibold text-gray-400">Barang Ditolak</label>
+                            <input
+                              type="number"
+                              min="0"
+                              max={item.quantity}
+                              value={input.qty}
+                              onChange={(e) => setRejectionInputs((prev) => ({ ...prev, [i]: { ...prev[i] ?? { qty: '', reason: '' }, qty: e.target.value } }))}
+                              placeholder="0"
+                              className="w-full rounded-md border border-gray-200 px-2 py-1.5 text-xs focus:border-blue-500 focus:outline-none"
+                            />
+                          </div>
+                          <div>
+                            <label className="mb-0.5 block text-[10px] font-semibold text-gray-400">Alasan Penolakan</label>
+                            <input
+                              type="text"
+                              value={input.reason}
+                              onChange={(e) => setRejectionInputs((prev) => ({ ...prev, [i]: { ...prev[i] ?? { qty: '', reason: '' }, reason: e.target.value } }))}
+                              placeholder={rejected > 0 ? 'Wajib diisi jika ada penolakan' : '—'}
+                              disabled={rejected === 0}
+                              className="w-full rounded-md border border-gray-200 px-2 py-1.5 text-xs focus:border-blue-500 focus:outline-none disabled:bg-gray-50"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex gap-2 border-t border-gray-100 px-4 py-3">
+                <button onClick={handleSaveRejections} disabled={saving} className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-gray-200 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50 disabled:bg-gray-100">
+                  <Save className="h-4 w-4" /> Simpan Catatan
+                </button>
+                <button onClick={handleComplete} disabled={saving} className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:bg-gray-300">
+                  <CheckCircle2 className="h-4 w-4" /> Selesai & Tutup SJ
+                </button>
               </div>
             </div>
+          ) : (
+            <>
+              <h2 className="mb-3 text-sm font-bold text-gray-900">Surat Jalan Aktif</h2>
+              {activeSJ.length === 0 ? (
+                <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 py-10 text-center">
+                  <FileText className="mb-2 h-10 w-10 text-gray-300" />
+                  <p className="text-sm text-gray-500">Tidak ada Surat Jalan aktif</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {activeSJ.map((sj) => (
+                    <button key={sj.id} onClick={() => handleOpenSJ(sj)} className="w-full overflow-hidden rounded-xl border border-gray-200 bg-white text-left shadow-sm hover:shadow-md">
+                      <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+                        <div>
+                          <p className="text-sm font-bold">{sj.nomor_surat_jalan}</p>
+                          <p className="text-xs text-gray-500">{sj.store_name} · {sj.items.length} item</p>
+                        </div>
+                        <ChevronRight className="h-5 w-5 text-gray-300" />
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {completedSJ.length > 0 && (
+                <div className="mt-6">
+                  <h2 className="mb-3 text-sm font-bold text-gray-900">Baru Selesai</h2>
+                  <div className="space-y-2">
+                    {completedSJ.slice(0, 5).map((sj) => {
+                      const totalRejected = sj.items.reduce((s, i) => s + i.rejected_qty, 0);
+                      return (
+                        <div key={sj.id} className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-2.5">
+                          <div>
+                            <p className="text-sm font-semibold">{sj.nomor_surat_jalan}</p>
+                            <p className="text-xs text-gray-500">{sj.store_name}</p>
+                          </div>
+                          {totalRejected > 0 ? (
+                            <span className="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-700">{totalRejected} ditolak</span>
+                          ) : (
+                            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">OK</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
 
       {view === 'orders' && (
         <div className="mx-auto max-w-2xl px-4 py-4">
-          <h1 className="mb-4 text-lg font-bold text-gray-900">Riwayat Pengiriman</h1>
-          {myDeliveries.length === 0 ? (
+          <h1 className="mb-4 text-lg font-bold text-gray-900">Riwayat Surat Jalan</h1>
+          {mySJ.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 py-12 text-center">
-              <Package className="mb-2 h-10 w-10 text-gray-300" />
+              <FileText className="mb-2 h-10 w-10 text-gray-300" />
               <p className="text-sm text-gray-500">Belum ada riwayat</p>
             </div>
           ) : (
             <div className="space-y-2">
-              {myDeliveries.map((order) => (
-                <div key={order.id} className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-3">
+              {mySJ.map((sj) => (
+                <div key={sj.id} className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-3">
                   <div>
-                    <p className="text-sm font-semibold">{order.id.slice(0, 8).toUpperCase()}</p>
-                    <p className="text-xs text-gray-500">{order.store_name} · {formatDate(order.created_at)}</p>
+                    <p className="text-sm font-semibold">{sj.nomor_surat_jalan}</p>
+                    <p className="text-xs text-gray-500">{sj.store_name} · {formatDate(sj.created_at)}</p>
                   </div>
-                  <StatusBadge status={order.status} />
+                  <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-medium', sj.status === 'selesai' ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700')}>
+                    {sj.status === 'selesai' ? 'Selesai' : 'Aktif'}
+                  </span>
                 </div>
               ))}
             </div>
@@ -1004,7 +1215,7 @@ function StaffProfile({ staff }: { staff: Staff }) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const roleLabels: Record<StaffRole, string> = { sales: 'Sales', field_admin: 'Admin Lapangan', driver: 'Driver' };
+  const roleLabels: Record<StaffRole, string> = { sales: 'Sales', field_admin: 'Admin Lapangan', driver: 'Driver', finance: 'Admin Keuangan' };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();

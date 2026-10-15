@@ -1,4 +1,4 @@
-export type StaffRole = 'sales' | 'field_admin' | 'driver';
+export type StaffRole = 'sales' | 'field_admin' | 'driver' | 'finance';
 
 export interface StockMovement {
   id: string;
@@ -97,4 +97,50 @@ export interface AuthUser {
   kind: 'store' | 'staff' | 'admin';
   store?: Store;
   staff?: Staff;
+}
+
+export interface SuratJalanItem {
+  productId: string;
+  name: string;
+  quantity: number;
+  unit: string;
+  price: number;
+  rejected_qty: number;
+  rejection_reason: string | null;
+}
+
+export interface SuratJalan {
+  id: string;
+  nomor_surat_jalan: string;
+  order_id: string | null;
+  store_id: string | null;
+  store_name: string;
+  driver_id: string | null;
+  driver_name: string | null;
+  items: SuratJalanItem[];
+  status: 'aktif' | 'selesai' | 'dibatalkan';
+  catatan: string | null;
+  created_at: string;
+}
+
+export type PaymentMethod = 'tunai' | 'top';
+export type InvoiceStatus = 'belum_lunas' | 'lunas' | 'jatuh_tempo';
+
+export interface Invoice {
+  id: string;
+  nomor_faktur: string;
+  surat_jalan_id: string | null;
+  nomor_surat_jalan: string;
+  store_id: string | null;
+  store_name: string;
+  items: SuratJalanItem[];
+  total_asli: number;
+  total_setelah_penolakan: number;
+  metode_pembayaran: PaymentMethod;
+  top_jangka_waktu: number | null;
+  top_jatuh_tempo: string | null;
+  status: InvoiceStatus;
+  tanggal_pembayaran: string | null;
+  catatan: string | null;
+  created_at: string;
 }

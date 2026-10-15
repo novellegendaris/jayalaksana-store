@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback, type React
 import { supabase } from './lib/supabase';
 import type {
   AuthUser, Store, Staff, Product, Order, CartItem, OrderItem, OrderStatus, Coordinates,
-  StockMovement,
+  StockMovement, SuratJalan, Invoice, SuratJalanItem, PaymentMethod, InvoiceStatus,
 } from './types';
 
 interface AppState {
@@ -57,6 +57,17 @@ interface AppState {
   stockMovements: StockMovement[];
   recordStockIn: (data: { productId: string; productName: string; quantity: number; supplier: string; notes: string; staffId: string; staffName: string }) => Promise<{ success: boolean; error?: string }>;
   recordStockOpname: (data: { productId: string; productName: string; damagedQty: number; lostQty: number; notes: string; staffId: string; staffName: string }) => Promise<{ success: boolean; error?: string }>;
+
+  // Surat Jalan
+  suratJalan: SuratJalan[];
+  createSuratJalan: (data: { orderId: string; nomorSuratJalan: string; driverId: string; driverName: string; catatan: string }) => Promise<{ success: boolean; error?: string }>;
+  updateSuratJalanRejections: (suratJalanId: string, items: SuratJalanItem[]) => Promise<{ success: boolean; error?: string }>;
+  completeSuratJalan: (suratJalanId: string) => Promise<{ success: boolean; error?: string }>;
+
+  // Invoices
+  invoices: Invoice[];
+  createInvoice: (data: { suratJalanId: string; nomorFaktur: string; metodePembayaran: PaymentMethod; topJangkaWaktu: number; catatan: string }) => Promise<{ success: boolean; error?: string }>;
+  payInvoice: (invoiceId: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 const AppContext = createContext<AppState | undefined>(undefined);
@@ -71,6 +82,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
+  const [suratJalan, setSuratJalan] = useState<SuratJalan[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
 
   // Restore session + load initial data
@@ -85,18 +98,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refreshData = useCallback(async () => {
-    const [p, s, st, o, sm] = await Promise.all([
+    const [p, s, st, o, sm, sj, inv] = await Promise.all([
       supabase.from('products').select('*').order('name'),
       supabase.from('stores').select('*').order('created_at', { ascending: false }),
       supabase.from('staff').select('*').order('name'),
       supabase.from('orders').select('*').order('created_at', { ascending: false }),
       supabase.from('stock_movements').select('*').order('created_at', { ascending: false }),
+      supabase.from('surat_jalan').select('*').order('created_at', { ascending: false }),
+      supabase.from('invoices').select('*').order('created_at', { ascending: false }),
     ]);
     if (p.data) setProducts(p.data as Product[]);
     if (s.data) setStores(s.data as Store[]);
     if (st.data) setStaff(st.data as Staff[]);
     if (o.data) setOrders(o.data as Order[]);
     if (sm.data) setStockMovements(sm.data as StockMovement[]);
+    if (sj.data) setSuratJalan(sj.data as SuratJalan[]);
+    if (inv.data) setInvoices(inv.data as Invoice[]);
   }, []);
 
   useEffect(() => {
@@ -409,6 +426,101 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return { success: true };
   };
 
+  // ===== SURAT JALAN =====
+  const createSuratJalan = async (data: { orderId: string; nomorSuratJalan: string; driverId: string; driverName: string; catatan: string }) => {
+    const order = orders.find((o) => o.id === data.orderId);
+    if (!order) return { success: false, error: 'Pesanan tidak ditemukan' };
+
+    const sjItems: SuratJalanItem[] = order.items.map((item) => ({
+      productId: item.productId,
+      name: item.name,
+      quantity: item.quantity,
+      unit: item.unit,
+      price: item.price,
+      rejected_qty: 0,
+      rejection_reason: null,
+    }));
+
+    const { error } = await supabase.from('surat_jalan').insert({
+      nomor_surat_jalan: data.nomorSuratJalan,
+      order_id: data.orderId,
+      store_id: order.store_id,
+      store_name: order.store_name ?? '',
+      driver_id: data.driverId,
+      driver_name: data.driverName,
+      items: sjItems as unknown as Record<string, unknown>[],
+      status: 'aktif',
+      catatan: data.catatan || null,
+    });
+    if (error) return { success: false, error: error.message };
+
+    await refreshData();
+    return { success: true };
+  };
+
+  const updateSuratJalanRejections = async (suratJalanId: string, items: SuratJalanItem[]) => {
+    const { error } = await supabase.from('surat_jalan').update({
+      items: items as unknown as Record<string, unknown>[],
+    }).eq('id', suratJalanId);
+    if (error) return { success: false, error: error.message };
+    await refreshData();
+    return { success: true };
+  };
+
+  const completeSuratJalan = async (suratJalanId: string) => {
+    const { error } = await supabase.from('surat_jalan').update({ status: 'selesai' }).eq('id', suratJalanId);
+    if (error) return { success: false, error: error.message };
+    await refreshData();
+    return { success: true };
+  };
+
+  // ===== INVOICES =====
+  const createInvoice = async (data: { suratJalanId: string; nomorFaktur: string; metodePembayaran: PaymentMethod; topJangkaWaktu: number; catatan: string }) => {
+    const sj = suratJalan.find((s) => s.id === data.suratJalanId);
+    if (!sj) return { success: false, error: 'Surat Jalan tidak ditemukan' };
+
+    const totalAsli = sj.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    const totalSetelahPenolakan = sj.items.reduce((sum, item) => sum + item.price * (item.quantity - item.rejected_qty), 0);
+
+    let topJatuhTempo: string | null = null;
+    if (data.metodePembayaran === 'top' && data.topJangkaWaktu > 0) {
+      const d = new Date();
+      d.setDate(d.getDate() + data.topJangkaWaktu);
+      topJatuhTempo = d.toISOString().split('T')[0];
+    }
+
+    const { error } = await supabase.from('invoices').insert({
+      nomor_faktur: data.nomorFaktur,
+      surat_jalan_id: data.suratJalanId,
+      nomor_surat_jalan: sj.nomor_surat_jalan,
+      store_id: sj.store_id,
+      store_name: sj.store_name,
+      items: sj.items as unknown as Record<string, unknown>[],
+      total_asli: totalAsli,
+      total_setelah_penolakan: totalSetelahPenolakan,
+      metode_pembayaran: data.metodePembayaran,
+      top_jangka_waktu: data.metodePembayaran === 'top' ? data.topJangkaWaktu : null,
+      top_jatuh_tempo: topJatuhTempo,
+      status: data.metodePembayaran === 'tunai' ? 'lunas' : 'belum_lunas',
+      catatan: data.catatan || null,
+    });
+    if (error) return { success: false, error: error.message };
+
+    await refreshData();
+    return { success: true };
+  };
+
+  const payInvoice = async (invoiceId: string) => {
+    const today = new Date().toISOString().split('T')[0];
+    const { error } = await supabase.from('invoices').update({
+      status: 'lunas',
+      tanggal_pembayaran: today,
+    }).eq('id', invoiceId);
+    if (error) return { success: false, error: error.message };
+    await refreshData();
+    return { success: true };
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -420,6 +532,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         placeOrder, updateOrderStatus, assignFleet,
         addStore, addStaff, addProduct, deleteStore, deleteStaff, deleteProduct,
         stockMovements, recordStockIn, recordStockOpname,
+        suratJalan, createSuratJalan, updateSuratJalanRejections, completeSuratJalan,
+        invoices, createInvoice, payInvoice,
       }}
     >
       {children}
